@@ -13,9 +13,8 @@ TEMP_FOLDER = "Temp"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # SMTP-server
+PASSWORD_FOR_DEFAULT_SMTP = "12345678"
 SMTP_USER1 = "usermail@mail.ru"
 SMTP_PASSWORD1 = "0000000000000000"
-
-
 SMTP_USER2 = "usermail@gmail.com"
 SMTP_PASSWORD2 = "aaaa aaaa aaaa aaaa"
