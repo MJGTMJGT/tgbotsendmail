@@ -1,8 +1,9 @@
 from telebot import TeleBot
 from database import session, User
-from email_utils import send_email, is_valid_email
-from config import TEMP_FOLDER, ADMIN, SMTP_USER1, SMTP_USER2, SMTP_PASSWORD1, SMTP_PASSWORD2
-from strings import INFO_MESSAGE, HELP_MESSAGE, EMAIL_UPDATED_MESSAGE, SUBJECT_UPDATED_MESSAGE, SMTP_SERVER_UPDATED_MESSAGE, SMTP_PORT_UPDATED_MESSAGE, SMTP_USER_UPDATED_MESSAGE, SMTP_PASSWORD_UPDATED_MESSAGE, START_MESSAGE, CHANGE_SMTP_USER_MESSAGE, REGISTRATION_COMPLETE_MESSAGE, REGISTRATION_INCOMPLETE_MESSAGE, FILE_SENT_MESSAGE, IMAGE_SENT_MESSAGE, EMAIL_PROMPT, CHANGE_EMAIL_PROMPT, CHANGE_SUBJECT_PROMPT, CHANGE_SMTP_PROMPT, CHANGE_SMTP_SERVER_PROMPT, CHANGE_SMTP_PORT_PROMPT, CHANGE_SMTP_USER_PROMPT, CHANGE_SMTP_PASSWORD_PROMPT, CHANGE_SMTP_PORT_PROMPT2, SMTP_SETTINGS_DEFAULT_MAILRU, SMTP_SETTINGS_DEFAULT_GMAIL
+from data_validation import is_valid_email, is_valid_smtp, is_valid_smtp_port, is_valid_port
+from email_utils import send_email
+from config import TEMP_FOLDER, ADMIN, SMTP_USER1, SMTP_USER2, SMTP_PASSWORD1, SMTP_PASSWORD2, PASSWORD_FOR_DEFAULT_SMTP
+from strings import INFO_MESSAGE, HELP_MESSAGE, EMAIL_UPDATED_MESSAGE, SUBJECT_UPDATED_MESSAGE, SMTP_SERVER_UPDATED_MESSAGE, SMTP_PORT_UPDATED_MESSAGE, SMTP_USER_UPDATED_MESSAGE, SMTP_PASSWORD_UPDATED_MESSAGE, START_MESSAGE, CHANGE_SMTP_USER_MESSAGE, REGISTRATION_COMPLETE_MESSAGE, REGISTRATION_INCOMPLETE_MESSAGE, FILE_SENT_MESSAGE, IMAGE_SENT_MESSAGE, VIDEO_SENT_MESSAGE, EMAIL_PROMPT, CHANGE_EMAIL_PROMPT, CHANGE_SUBJECT_PROMPT, CHANGE_SMTP_PROMPT, CHANGE_SMTP_SERVER_PROMPT, CHANGE_SMTP_PROMPT_PASS, CHANGE_SMTP_PORT_PROMPT, CHANGE_SMTP_USER_PROMPT, CHANGE_SMTP_PASSWORD_PROMPT, CHANGE_SMTP_PORT_PROMPT2, SMTP_SETTINGS_DEFAULT_MAILRU, SMTP_SETTINGS_DEFAULT_GMAIL, VALIDATION_MAIL_REQUEST, VALIDATION_SMTP_REQUEST, VALIDATION_PORT_REQUEST
 import os
 
 # Состояния для регистрации
@@ -68,8 +69,13 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.email = message.text
         session.commit()
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, EMAIL_UPDATED_MESSAGE + str(user.email))
+        if is_valid_email(message.text):
+            user_states.pop(user_id, None)
+            bot.send_message(message.chat.id, EMAIL_UPDATED_MESSAGE + str(user.email))
+        else:
+            user_states[user_id] = 'changemail'
+            bot.send_message(message.chat.id, VALIDATION_MAIL_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_EMAIL_PROMPT)
 
 
     # Команда /changesubj
@@ -108,14 +114,16 @@ def register_handlers(bot: TeleBot):
             user = User(telegram_id=user_id, username=username)
             session.add(user)
             session.commit()
-        user_states[user_id] = 'smtp_server'
-        bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT)
+        user_states[user_id] = 'smtp_server_password'
+        bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT_PASS)
+        session.commit()
 
 
     # Команда /changesmtpserver
     @bot.message_handler(commands=['changesmtpserver'])
     def change_smtp_server(message):
         user_id = message.from_user.id
+        username = message.from_user.username
         user = session.query(User).filter_by(telegram_id=user_id).first()
         if not user:
             user = User(telegram_id=user_id, username=username)
@@ -131,14 +139,20 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.smtp_server = message.text
         session.commit()
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, SMTP_SERVER_UPDATED_MESSAGE + str(user.smtp_server))
+        if is_valid_smtp(message.text):
+            user_states.pop(user_id, None)
+            bot.send_message(message.chat.id, SMTP_SERVER_UPDATED_MESSAGE + str(user.smtp_server))
+        else:
+            user_states[user_id] = 'change_smtp_server'
+            bot.send_message(message.chat.id, VALIDATION_SMTP_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_SMTP_SERVER_PROMPT)
 
 
     # Команда /changesmtpport
     @bot.message_handler(commands=['changesmtpport'])
     def change_smtp_port(message):
         user_id = message.from_user.id
+        username = message.from_user.username
         user = session.query(User).filter_by(telegram_id=user_id).first()
         if not user:
             user = User(telegram_id=user_id, username=username)
@@ -154,14 +168,21 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.smtp_port = message.text
         session.commit()
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, SMTP_PORT_UPDATED_MESSAGE + str(user.smtp_port))
+        if is_valid_port(message.text):
+            user_states.pop(user_id, None)
+            bot.send_message(message.chat.id, SMTP_PORT_UPDATED_MESSAGE + str(user.smtp_port))
+        else:
+            user_states[user_id] = 'change_smtp_port'
+            bot.send_message(message.chat.id, VALIDATION_PORT_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_SMTP_PORT_PROMPT + str(user.smtp_port))
+
 
 
     # Команда /changesmtpuser
     @bot.message_handler(commands=['changesmtpuser'])
     def changesmtpuser(message):
         user_id = message.from_user.id
+        username = message.from_user.username
         user = session.query(User).filter_by(telegram_id=user_id).first()
         if not user:
             user = User(telegram_id=user_id, username=username)
@@ -175,6 +196,7 @@ def register_handlers(bot: TeleBot):
     @bot.message_handler(commands=['changesmtplogin'])
     def change_smtp_login(message):
         user_id = message.from_user.id
+        username = message.from_user.username
         user = session.query(User).filter_by(telegram_id=user_id).first()
         if not user:
             user = User(telegram_id=user_id, username=username)
@@ -190,14 +212,21 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.smtp_user = message.text
         session.commit()
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, SMTP_USER_UPDATED_MESSAGE + str(user.smtp_user))
+        if is_valid_email(message.text):
+            user_states.pop(user_id, None)
+            bot.send_message(message.chat.id, SMTP_USER_UPDATED_MESSAGE + str(user.smtp_user))
+        else:
+            user_states[user_id] = 'change_smtp_user'
+            bot.send_message(message.chat.id, VALIDATION_MAIL_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_SMTP_USER_PROMPT + str(user.smtp_user))
+
 
 
     # Команда /changesmtppass
     @bot.message_handler(commands=['changesmtppass'])
     def change_smtp_password(message):
         user_id = message.from_user.id
+        username = message.from_user.username
         user = session.query(User).filter_by(telegram_id=user_id).first()
         if not user:
             user = User(telegram_id=user_id, username=username)
@@ -246,9 +275,15 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.email = message.text
         session.commit()
-        user_states[user_id] = 'subject'
-        bot.send_message(message.chat.id, EMAIL_PROMPT)
-        #return SUBJECT
+        if is_valid_email(message.text):
+            user_states[user_id] = 'subject'
+            bot.send_message(message.chat.id, EMAIL_PROMPT)
+            # return SUBJECT
+        else:
+            user_states[user_id] = 'email'
+            bot.send_message(message.chat.id, VALIDATION_MAIL_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_EMAIL_PROMPT)
+
 
 
     # Обработка темы сообщения
@@ -258,9 +293,28 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.subject = message.text
         session.commit()
-        user_states[user_id] = 'smtp_server'
-        bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT)
+        user_states[user_id] = 'smtp_server_password'
+        bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT_PASS)
 
+
+    # Обработка SMTP-сервера
+    @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'smtp_server_password')
+    def set_smtp_server(message):
+        user_id = message.from_user.id
+        user = session.query(User).filter_by(telegram_id=user_id).first()
+        user.smtp_server = message.text
+        if message.text == PASSWORD_FOR_DEFAULT_SMTP:
+            user_states[user_id] = 'smtp_server'
+            bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT)
+        else:
+            if is_valid_smtp(message.text):
+                user_states[user_id] = 'smtp_port'
+                bot.send_message(message.chat.id, CHANGE_SMTP_PORT_PROMPT2)
+            else:
+                user_states[user_id] = 'smtp_server_password'
+                bot.send_message(message.chat.id, VALIDATION_SMTP_REQUEST)
+                bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT_PASS)
+        session.commit()
 
     # Обработка SMTP-сервера
     @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'smtp_server')
@@ -301,8 +355,13 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.smtp_port = message.text
         session.commit()
-        user_states[user_id] = 'smtp_user'
-        bot.send_message(message.chat.id, CHANGE_SMTP_USER_MESSAGE)
+        if is_valid_port(message.text):
+            user_states[user_id] = 'smtp_user'
+            bot.send_message(message.chat.id, CHANGE_SMTP_USER_MESSAGE)
+        else:
+            user_states[user_id] = 'smtp_port'
+            bot.send_message(message.chat.id, VALIDATION_PORT_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_SMTP_PORT_PROMPT2)
 
 
     # Обработка SMTP-пользователя
@@ -312,8 +371,13 @@ def register_handlers(bot: TeleBot):
         user = session.query(User).filter_by(telegram_id=user_id).first()
         user.smtp_user = message.text
         session.commit()
-        user_states[user_id] = 'smtp_password'
-        bot.send_message(message.chat.id, CHANGE_SMTP_PASSWORD_PROMPT)
+        if is_valid_email(message.text):
+            user_states[user_id] = 'smtp_password'
+            bot.send_message(message.chat.id, CHANGE_SMTP_PASSWORD_PROMPT)
+        else:
+            user_states[user_id] = 'smtp_user'
+            bot.send_message(message.chat.id, VALIDATION_MAIL_REQUEST)
+            bot.send_message(message.chat.id, CHANGE_SMTP_USER_MESSAGE)
 
 
     # Обработка пароля SMTP
@@ -329,7 +393,7 @@ def register_handlers(bot: TeleBot):
 
 
     # Обработка файлов и изображений
-    @bot.message_handler(content_types=['document', 'photo'])
+    @bot.message_handler(content_types=['document', 'photo', 'video'])
     def handle_file(message):
         user_id = message.from_user.id
         user = session.query(User).filter_by(telegram_id=user_id).first()
@@ -338,10 +402,20 @@ def register_handlers(bot: TeleBot):
             bot.send_message(message.chat.id, REGISTRATION_INCOMPLETE_MESSAGE)
             return
 
+        print(str(message.content_type))
+
         # Скачиваем файл
         if message.content_type == 'photo':
+            # Получаем фото в максимальном качестве
             raw = message.photo[2].file_id
             file_path = os.path.join(TEMP_FOLDER, raw + ".jpg")
+            file_info = bot.get_file(raw)
+            with open(file_path, 'wb') as f:
+                f.write(bot.download_file(file_info.file_path))
+        elif message.content_type == 'video':
+            # Получаем видео файл
+            raw = message.video.file_id
+            file_path = os.path.join(TEMP_FOLDER, raw + ".mp4")
             file_info = bot.get_file(raw)
             with open(file_path, 'wb') as f:
                 f.write(bot.download_file(file_info.file_path))
@@ -364,3 +438,5 @@ def register_handlers(bot: TeleBot):
             bot.send_message(message.chat.id, FILE_SENT_MESSAGE)
         elif message.content_type == 'photo':
             bot.send_message(message.chat.id, IMAGE_SENT_MESSAGE)
+        elif message.content_type == 'video':
+            bot.send_message(message.chat.id, VIDEO_SENT_MESSAGE)
