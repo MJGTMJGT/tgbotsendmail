@@ -14,7 +14,7 @@ def send_email(user, file_path):
         #msg['Message-Id'] = make_msgid()                            # Кириллица
         msg['From'] = user.smtp_user
         msg['To'] = user.email
-        msg['Subject'] = f"{user.subject} {user.message_count}"
+        msg['Subject'] = f"{user.subject}" if user.message_count == 0 else f"{user.subject} {user.message_count}"   #тернарный оператор
 
         # Прикрепляем файл
         with open(file_path, 'rb') as f:
@@ -32,9 +32,7 @@ def send_email(user, file_path):
                 server.sendmail(user.smtp_user, user.email, msg.as_string())
                 #server.close()
                 server.quit()
-                print("Сообщение успешно отправлено: 465")
-                print(str(user))
-                print(str(file_path))
+                #print("Сообщение успешно отправлено: 465")
         elif user.smtp_port == 587:
             with smtplib.SMTP(user.smtp_server, user.smtp_port) as server:
             #with smtplib.SMTP(user.smtp_server, user.smtp_port) as server:
@@ -44,14 +42,60 @@ def send_email(user, file_path):
                 server.sendmail(user.smtp_user, user.email, msg.as_string())
                 #server.close()
                 server.quit()
-                print("Сообщение успешно отправлено: 587")
+                #print("Сообщение успешно отправлено: 587")
         else:
             print(NOT_SUPPORT_PORT)
             with smtplib.SMTP_SSL(user.smtp_server, user.smtp_port) as server:
+                server.ehlo()
+                server.starttls()
                 server.login(user.smtp_user, user.smtp_password)
                 server.sendmail(user.smtp_user, user.email, msg.as_string())
                 #server.close()
                 server.quit()
-                print("Какой-то другой порт")
+                print("Порт: " + str(user.smtp_port))
+
+    except Exception as e:
+        print(f"Ошибка отправки email: {e}")
+
+
+def send_email_with_text(user, contact_info):
+    try:
+        # Настраиваем e-mail
+        msg = MIMEMultipart()
+        msg['From'] = user.smtp_user
+        msg['To'] = user.email
+        msg['Subject'] = f"{user.subject}" if user.message_count == 0 else f"{user.subject} {user.message_count}"   #тернарный оператор
+
+        # Прикрепляем информацию о контакте
+        msg.attach(MIMEText(contact_info, 'plain'))
+        # Отправляем письмо
+        if str(user.smtp_port) == "465":
+            with smtplib.SMTP_SSL(user.smtp_server, user.smtp_port) as server:
+                server.login(user.smtp_user, user.smtp_password)
+                #server.send_message(msg)
+                server.sendmail(user.smtp_user, user.email, msg.as_string())
+                # server.sendmail(user.smtp_user, user.email, msg.as_string())
+                server.quit()
+                print(f"465")
+        elif str(user.smtp_port) == "587":
+            with smtplib.SMTP(user.smtp_server, user.smtp_port) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(user.smtp_user, user.smtp_password)
+                server.send_message(msg)
+                # server.sendmail(user.smtp_user, user.email, msg.as_string())
+                server.quit()
+                print(f"587")
+        else:
+            with smtplib.SMTP_SSL(user.smtp_server, user.smtp_port) as server:
+                server.ehlo()
+                #server.starttls()
+                server.login(user.smtp_user, user.smtp_password)
+                #server.send_message(msg)
+                server.sendmail(user.smtp_user, user.email, msg.as_string())
+                # server.sendmail(user.smtp_user, user.email, msg.as_string())
+                server.quit()
+                print(f"Other")
+
     except Exception as e:
         print(f"Ошибка отправки email: {e}")
