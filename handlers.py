@@ -1,9 +1,9 @@
 from telebot import TeleBot
 from database import session, User
-from data_validation import is_valid_email, is_valid_smtp, is_valid_smtp_port, is_valid_port
-from email_utils import send_email
+from data_validation import is_valid_email, is_valid_smtp, is_valid_smtp_port, is_valid_port, extract_phone_numbers
+from email_utils import send_email, send_email_with_text
 from config import TEMP_FOLDER, ADMIN, SMTP_USER1, SMTP_USER2, SMTP_PASSWORD1, SMTP_PASSWORD2, PASSWORD_FOR_DEFAULT_SMTP
-from strings import INFO_MESSAGE, HELP_MESSAGE, EMAIL_UPDATED_MESSAGE, SUBJECT_UPDATED_MESSAGE, SMTP_SERVER_UPDATED_MESSAGE, SMTP_PORT_UPDATED_MESSAGE, SMTP_USER_UPDATED_MESSAGE, SMTP_PASSWORD_UPDATED_MESSAGE, START_MESSAGE, CHANGE_SMTP_USER_MESSAGE, REGISTRATION_COMPLETE_MESSAGE, REGISTRATION_INCOMPLETE_MESSAGE, FILE_SENT_MESSAGE, IMAGE_SENT_MESSAGE, VIDEO_SENT_MESSAGE, EMAIL_PROMPT, CHANGE_EMAIL_PROMPT, CHANGE_SUBJECT_PROMPT, CHANGE_SMTP_PROMPT, CHANGE_SMTP_SERVER_PROMPT, CHANGE_SMTP_PROMPT_PASS, CHANGE_SMTP_PORT_PROMPT, CHANGE_SMTP_USER_PROMPT, CHANGE_SMTP_PASSWORD_PROMPT, CHANGE_SMTP_PORT_PROMPT2, SMTP_SETTINGS_DEFAULT_MAILRU, SMTP_SETTINGS_DEFAULT_GMAIL, VALIDATION_MAIL_REQUEST, VALIDATION_SMTP_REQUEST, VALIDATION_PORT_REQUEST
+from strings import INFO_MESSAGE, HELP_MESSAGE, SETT_COUNTER_PROMPT, COUNTER_UPDATED_MESSAGE, COUNTER_ON_MESSAGE, COUNTER_OFF_MESSAGE, EMAIL_UPDATED_MESSAGE, SUBJECT_UPDATED_MESSAGE, SMTP_SERVER_UPDATED_MESSAGE, SMTP_PORT_UPDATED_MESSAGE, SMTP_USER_UPDATED_MESSAGE, SMTP_PASSWORD_UPDATED_MESSAGE, START_MESSAGE, CHANGE_SMTP_USER_MESSAGE, REGISTRATION_COMPLETE_MESSAGE, REGISTRATION_INCOMPLETE_MESSAGE, FILE_SENT_MESSAGE, IMAGE_SENT_MESSAGE, VIDEO_SENT_MESSAGE, AUDIO_SENT_MESSAGE, CONTACT_SENT_MESSAGE, LOCATION_SENT_MESSAGE, EMAIL_PROMPT, CHANGE_EMAIL_PROMPT, CHANGE_SUBJECT_PROMPT, CHANGE_SMTP_PROMPT, CHANGE_SMTP_SERVER_PROMPT, CHANGE_SMTP_PROMPT_PASS, CHANGE_SMTP_PORT_PROMPT, CHANGE_SMTP_USER_PROMPT, CHANGE_SMTP_PASSWORD_PROMPT, CHANGE_SMTP_PORT_PROMPT2, SMTP_SETTINGS_DEFAULT_MAILRU, SMTP_SETTINGS_DEFAULT_GMAIL, VALIDATION_MAIL_REQUEST, VALIDATION_SMTP_REQUEST, VALIDATION_PORT_REQUEST
 import os
 
 # Состояния для регистрации
@@ -101,6 +101,42 @@ def register_handlers(bot: TeleBot):
         session.commit()
         user_states.pop(user_id, None)
         bot.send_message(message.chat.id, SUBJECT_UPDATED_MESSAGE + str(user.subject))
+
+
+    # Команда /counter
+    @bot.message_handler(commands=['counter'])
+    def counter(message):
+        user_id = message.from_user.id
+        username = message.from_user.username
+        # Проверяем, есть ли пользователь в базе
+        user = session.query(User).filter_by(telegram_id=user_id).first()
+        if not user:
+            user = User(telegram_id=user_id, username=username)
+            session.add(user)
+            session.commit()
+        user_states[user_id] = 'sett_counter'
+        bot.send_message(message.chat.id, SETT_COUNTER_PROMPT)
+
+    # Обработка команды /counter
+    @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'sett_counter')
+    def set_sett_counter(message):
+        user_id = message.from_user.id
+        user = session.query(User).filter_by(telegram_id=user_id).first()
+        if message.text == "0":
+            user.message_count = 1
+            bot.send_message(message.chat.id, COUNTER_UPDATED_MESSAGE + str(user.message_count))
+        elif message.text == "1":
+            # user.message_count = 1 if user.message_count == 0 else 0  # используем тернарный оператор
+            if user.message_count == 0:
+                user.message_count = 1
+                bot.send_message(message.chat.id, COUNTER_ON_MESSAGE)
+            else:
+                user.message_count = 0
+                bot.send_message(message.chat.id, COUNTER_OFF_MESSAGE)
+        elif message.text == "2":
+            bot.send_message(message.chat.id, str(user.message_count))
+        session.commit()
+        user_states.pop(user_id, None)
 
 
     # Команда /changesmtp
@@ -302,12 +338,16 @@ def register_handlers(bot: TeleBot):
     def set_smtp_server(message):
         user_id = message.from_user.id
         user = session.query(User).filter_by(telegram_id=user_id).first()
-        user.smtp_server = message.text
         if message.text == PASSWORD_FOR_DEFAULT_SMTP:
             user_states[user_id] = 'smtp_server'
             bot.send_message(message.chat.id, CHANGE_SMTP_PROMPT)
         else:
-            if is_valid_smtp(message.text):
+            if is_valid_smtp_port(message.text):
+                user.smtp_server, user.smtp_port = message.text.split(':')
+                user_states[user_id] = 'smtp_user'
+                bot.send_message(message.chat.id, CHANGE_SMTP_USER_MESSAGE)
+            elif is_valid_smtp(message.text):
+                user.smtp_server = message.text
                 user_states[user_id] = 'smtp_port'
                 bot.send_message(message.chat.id, CHANGE_SMTP_PORT_PROMPT2)
             else:
@@ -393,7 +433,7 @@ def register_handlers(bot: TeleBot):
 
 
     # Обработка файлов и изображений
-    @bot.message_handler(content_types=['document', 'photo', 'video'])
+    @bot.message_handler(content_types=['document', 'photo', 'video', 'audio',  'contact', 'location'])
     def handle_file(message):
         user_id = message.from_user.id
         user = session.query(User).filter_by(telegram_id=user_id).first()
@@ -402,7 +442,12 @@ def register_handlers(bot: TeleBot):
             bot.send_message(message.chat.id, REGISTRATION_INCOMPLETE_MESSAGE)
             return
 
-        print(str(message.content_type))
+        # Инициализация переменных
+        location_info = ""
+        contact_info = ""
+        # file_path = os.path.join("1.jpg")
+
+        #print(str(message.content_type))
 
         # Скачиваем файл
         if message.content_type == 'photo':
@@ -410,29 +455,63 @@ def register_handlers(bot: TeleBot):
             raw = message.photo[2].file_id
             file_path = os.path.join(TEMP_FOLDER, raw + ".jpg")
             file_info = bot.get_file(raw)
+            downloaded_file = bot.download_file(file_info.file_path)
             with open(file_path, 'wb') as f:
-                f.write(bot.download_file(file_info.file_path))
+                f.write(downloaded_file)
         elif message.content_type == 'video':
             # Получаем видео файл
             raw = message.video.file_id
             file_path = os.path.join(TEMP_FOLDER, raw + ".mp4")
             file_info = bot.get_file(raw)
+            downloaded_file = bot.download_file(file_info.file_path)
             with open(file_path, 'wb') as f:
-                f.write(bot.download_file(file_info.file_path))
+                f.write(downloaded_file)
+        elif message.content_type == 'audio':
+            # Получаем аудио файл
+            raw = message.audio.file_id
+            file_path = TEMP_FOLDER + "/" + message.audio.file_name  # Используем исходное имя файла
+            file_info = bot.get_file(raw)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as new_file:
+                new_file.write(downloaded_file)
+            print(str(file_path))
+        elif message.content_type == 'contact':
+            # Получаем контакт
+            contact = message.contact
+            contact_info = f"Имя: {contact.first_name} {contact.last_name}\n"
+            # Если у контакта есть дополнительные номера (user_id), добавьте их
+            if hasattr(contact, 'user_id'):
+                contact_info += f"ID пользователя: {contact.user_id}\n"
+            # contact_info += f"Телефон(ы): {contact.phone_number}\n"
+            contact_info += f"Телефон(ы): {extract_phone_numbers(str(message.contact))}\n\n\n"
+            contact_info += f"Полная информация: {message.contact}\n"
+            # print(extract_phone_numbers(str(message.contact)))
+        elif message.content_type == 'location':
+            # Получаем геопозицию
+            location = message.location
+            location_info = f"Широта: {location.latitude}\nДолгота: {location.longitude}\n"
         else:
             file_info = bot.get_file(message.document.file_id)
             file_path = os.path.join(TEMP_FOLDER, f"{message.document.file_name}")
             with open(file_path, 'wb') as f:
                 f.write(bot.download_file(file_info.file_path))
 
-        # Увеличиваем счетчик сообщений и отправляем email
-        user.message_count += 1
+        # Увеличиваем счетчик сообщений, если не отключен и отправляем email
+        user.message_count += (user.message_count != 0)
         session.commit()
-        send_email(user, file_path)
 
-        # Удаляем файл после отправки
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        if message.content_type == 'contact':
+            # Отправляем контакт на e-mail
+            send_email_with_text(user, contact_info)
+        elif message.content_type == 'location':
+            # Отправляем контакт на e-mail
+            send_email_with_text(user, location_info)
+        else:
+            send_email(user, file_path)
+            # Удаляем файл после отправки
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
 
         if message.content_type == 'document':
             bot.send_message(message.chat.id, FILE_SENT_MESSAGE)
@@ -440,3 +519,11 @@ def register_handlers(bot: TeleBot):
             bot.send_message(message.chat.id, IMAGE_SENT_MESSAGE)
         elif message.content_type == 'video':
             bot.send_message(message.chat.id, VIDEO_SENT_MESSAGE)
+        elif message.content_type == 'audio':
+            bot.send_message(message.chat.id, AUDIO_SENT_MESSAGE)
+        elif message.content_type == 'contact':
+            bot.send_message(message.chat.id, CONTACT_SENT_MESSAGE)
+        elif message.content_type == 'location':
+            bot.send_message(message.chat.id, LOCATION_SENT_MESSAGE)
+
+
