@@ -14,10 +14,5 @@ init_db()
 register_handlers(bot)
 
 # Запуск бота
-#bot.polling(none_stop=True)
 if __name__ == "__main__":
     bot.polling(none_stop=True)
-
-#if __name__ == "__main__":
-#    main()
-
