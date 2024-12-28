@@ -20,3 +20,14 @@ def is_valid_port(port):
     pattern = r'^\d+$'
     return re.match(pattern, str(port)) is not None
 
+# Функция для поиска телефонных номеров в тексте
+def extract_phone_numbers(text):
+    # Регулярное выражение для поиска телефонных номеров
+    phone_pattern = r'\+?\d{1,3}[-\s]?\(?\d{1,4}?\)?[-\s]?\d{1,4}[-\s]?\d{1,4}[-\s]?\d{1,9}'
+    # Находим все совпадения в тексте
+    phone_numbers = re.findall(phone_pattern, text)
+    # Форматируем найденные номера
+    formatted_numbers = [''.join(number) for number in phone_numbers]
+    unique_numbers = set(formatted_numbers) # удаляем дубликаты
+    return list(unique_numbers)
+
